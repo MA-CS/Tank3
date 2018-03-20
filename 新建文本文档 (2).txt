@@ -1,0 +1,763 @@
+import java.awt.* ; 
+import javax.swing.* ; 
+import java.awt.event.*; 
+
+public class Tank3 extends JFrame { 
+
+private static final long serialVersionUID = 1L; 
+
+Tank3( String title ){ //重构 
+this.setTitle(title) ; //窗体名称 
+this.setSize(415 , 500) ; //窗体大小 
+this.setLocation(300 , 300) ; //窗体位置 
+this.setBackground(Color.WHITE) ; 
+
+//MyTank3 singlePlayer1 = new MyTank3();// 类Mytank3中包含所有游戏信息 
+//this.add( singlePlayer1 ); 
+//this.addKeyListener(singlePlayer1); 
+//new Thread(singlePlayer1).start(); 
+
+MyBullet3 singlePlayer2 = new MyBullet3(); 
+this.add( singlePlayer2 ); 
+this.addKeyListener(singlePlayer2); 
+new Thread(singlePlayer2).start(); 
+} 
+
+public static void main(String[] args) { 
+Tank3 h = new Tank3("坦克大战(版本1.1)") ; 
+h.setVisible(true) ; 
+} 
+} 
+
+
+// 存储地图网格数据的类，以判断坦克碰撞，0为可行区域，大于0为不可行区域 
+class groundData { 
+volatile public int ground[][] = new int [18][18]; 
+} 
+
+//主线程，我方坦克线程，paint线程 三合一 (这里应该更明确地对象化) 
+class MyTank3 extends JPanel implements KeyListener ,Runnable{ 
+
+private static final long serialVersionUID = 1L; 
+groundData o = new groundData();//地图数据，会在本线程中实时更新 
+int perStep = 1, sleepTime = 7;//线程的睡眠时间以及每次睡眠后坦克移动的像素 
+int x = 105 , y = 355 ;//我方坦克出生点 
+int op = 0 ; // 0:up 1:right 2:down 3:left 方向指示 
+int tankStep = 0; //用于在tank移动中计数 
+int life = 100 , score = 0 , difficulty = 20 ; //生命，得分，难度 
+int enemyNum = 0 , enemyMax = 6;//现有敌人数量，画面允许敌人的最大数量 
+boolean stuck = false ;//坦克是否无法前行 
+MyBullet3 bullet = new MyBullet3();//我方坦克炮弹 
+//敌方坦克炮弹 
+MyBullet3 sBullet = new MyBullet3(); 
+MyBullet3 enemyBullet[] = {sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet, 
+sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet, 
+sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet, 
+sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet,sBullet}; 
+//敌方坦克 
+EnemyTank sEnemy = new EnemyTank(2,5,5,o,-2); 
+EnemyTank enemy[] = {sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy, 
+sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy, 
+sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy, 
+sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy,sEnemy}; 
+
+
+
+
+//绘制坦克方法，i为坦克标号，我方为1，敌方大于1 
+public void drawTank ( Graphics g , int op , int x ,int y,int i){ 
+
+
+if( i == 1 ){ 
+g.setColor(Color.yellow);//我方黄色,敌方红色 
+}else{ 
+g.setColor(Color.red); 
+} 
+
+if(op == 0) { 
+g.fillRect(x , y , 40 , 40) ; //坦克体 
+g.setColor(Color.black) ; 
+g.drawRect(x + 10, y + 5, 20 , 20 );//轮廓 
+g.drawRect(x , y , 40 , 40 ); 
+g.drawRect(x - 5, y - 5, 10 , 50 );//左右两侧履带 
+g.fillOval(x - 5 , y - 5 , 10 , 10) ; 
+g.fillOval(x - 5 , y + 5 , 10 , 10) ; 
+g.fillOval(x - 5 , y + 15 , 10 , 10) ; 
+g.fillOval(x - 5 , y + 25 , 10 , 10) ; 
+g.fillOval(x - 5 , y + 35 , 10 , 10) ; 
+g.drawRect(x + 35 , y - 5, 10 , 50 ); 
+g.fillOval(x + 35 , y - 5 , 10 , 10) ; 
+g.fillOval(x + 35 , y + 5 , 10 , 10) ; 
+g.fillOval(x + 35 , y + 15 , 10 , 10) ; 
+g.fillOval(x + 35 , y + 25 , 10 , 10) ; 
+g.fillOval(x + 35 , y + 35 , 10 , 10) ; 
+g.fillRect(x + 15 , y - 20 , 10 , 40) ; //炮口 
+g.fillOval(x + 5 , y + 30 , 10 , 10) ; //天线 
+g.fillOval(x + 25 , y + 30 , 10 , 10) ; 
+}// end of if ( op == 1 ) 
+
+if(op == 1) { 
+g.fillRect(x , y , 40 , 40) ; 
+g.setColor(Color.black) ; 
+g.drawRect(x + 15, y + 10, 20 , 20 ); 
+g.drawRect(x , y , 40 , 40 ); 
+g.drawRect(x - 5, y - 5, 50 , 10 ); 
+g.fillOval(x - 5 , y - 5 , 10 , 10) ; 
+g.fillOval(x + 5 , y - 5 , 10 , 10) ; 
+g.fillOval(x + 15 , y - 5 , 10 , 10) ; 
+g.fillOval(x + 25 , y - 5 , 10 , 10) ; 
+g.fillOval(x + 35 , y - 5 , 10 , 10) ; 
+g.drawRect(x - 5 , y + 35, 50 , 10 ); 
+g.fillOval(x - 5 , y+35 , 10 , 10) ; 
+g.fillOval(x + 5 , y+35 , 10 , 10) ; 
+g.fillOval(x + 15 , y+35 , 10 , 10) ; 
+g.fillOval(x + 25 , y+35 , 10 , 10) ; 
+g.fillOval(x + 35 , y+35 , 10 , 10) ; 
+g.fillRect(x + 20 , y + 15 , 40 , 10) ; 
+g.fillOval(x , y + 5 , 10 , 10) ; 
+g.fillOval(x , y + 25 , 10 , 10) ; 
+}// end of if (op==2) 
+
+if(op == 2) { 
+g.fillRect(x , y , 40 , 40) ; 
+g.setColor(Color.black) ; 
+g.drawRect(x + 10, y + 15, 20 , 20 ); 
+g.drawRect(x , y , 40 , 40 ); 
+g.drawRect(x - 5, y - 5, 10 , 50 ); 
+g.fillOval(x - 5 , y - 5 , 10 , 10) ; 
+g.fillOval(x - 5 , y + 5 , 10 , 10) ; 
+g.fillOval(x - 5 , y + 15 , 10 , 10) ; 
+g.fillOval(x - 5 , y + 25 , 10 , 10) ; 
+g.fillOval(x - 5 , y + 35 , 10 , 10) ; 
+g.drawRect(x + 35 , y - 5, 10 , 50 ); 
+g.fillOval(x + 35 , y - 5 , 10 , 10) ; 
+g.fillOval(x + 35 , y + 5 , 10 , 10) ; 
+g.fillOval(x + 35 , y + 15 , 10 , 10) ; 
+g.fillOval(x + 35 , y + 25 , 10 , 10) ; 
+g.fillOval(x + 35 , y + 35 , 10 , 10) ; 
+g.fillRect(x + 15 , y + 20 , 10 , 40) ; 
+g.fillOval(x + 5 , y , 10 , 10) ; 
+g.fillOval(x + 25 , y , 10 , 10) ; 
+} //end of if ( op == 3 ) 
+
+if(op == 3) { 
+g.fillRect(x , y , 40 , 40) ; 
+g.setColor(Color.black) ; 
+g.drawRect(x + 5, y + 10, 20 , 20 ); 
+g.drawRect(x , y , 40 , 40 ); 
+g.drawRect(x - 5, y - 5, 50 , 10 ); 
+g.fillOval 
+(x - 5 , y - 5 , 10 , 10) ; 
+g.fillOval(x + 5 , y - 5 , 10 , 10) ; 
+g.fillOval(x + 15 , y - 5 , 10 , 10) ; 
+g.fillOval(x + 25 , y - 5 , 
+
+10 , 10) ; 
+g.fillOval(x + 35 , y - 5 , 10 , 10) ; 
+g.drawRect(x - 5 , y + 35, 50 , 10 ); 
+g.fillOval(x - 5 , y+35 , 10 , 10) ; 
+g.fillOval(x + 5 , y+35 , 10 , 10) ; 
+g.fillOval(x + 15 , y+35 , 10 , 10) ; 
+g.fillOval(x + 25 , y+35 , 10 , 10) ; 
+g.fillOval(x + 35 , y+35 , 10 , 10) ; 
+g.fillRect(x - 20 , y + 15 , 40 , 10) ; 
+g.fillOval(x + 30 , y + 5 , 10 , 10) ; 
+g.fillOval(x + 30 , y + 25 , 10 , 10) ; 
+} //end of if ( op == 4 ) 
+} 
+
+//绘图 
+public void paint( Graphics g ){ 
+super.paint(g); 
+this.setBackground(Color.WHITE); 
+
+//设置下方血条和得分的显示 
+g.setColor(Color.black) ; 
+g.fillRect(0 , 400 , 415 , 100) ; 
+g.setColor(Color.red) ; 
+g.fillRect(50 , 420 , life * 3 , 10) ; 
+//为坦克的阻塞区域填色，调试用 
+// for ( int i = 0; i < 18 ; i++ ) 
+// for ( int j = 0; j < 18 ; j++ ) 
+// if (o.ground[i][j] == 1 ) { 
+// g.setColor(Color.red) ; 
+// g.fillRect((i-1)*25, (j-1)*25, 25, 25);} 
+// else if (o.ground[i][j] == 2 ) { 
+// g.setColor(Color.blue) ; 
+// g.fillRect((i-1)*25, (j-1)*25, 25, 25);} 
+// else if (o.ground[i][j] == 3 ) { 
+// g.setColor(Color.yellow) ; 
+// g.fillRect((i-1)*25, (j-1)*25, 25, 25);} 
+// else if (o.ground[i][j] == 4 ) { 
+// g.setColor(Color.green) ; 
+// g.fillRect((i-1)*25, (j-1)*25, 25, 25);} 
+// else if (o.ground[i][j] == 5 ) { 
+// g.setColor(Color.gray) ; 
+// g.fillRect((i-1)*25, (j-1)*25, 25, 25);} 
+g.setColor(Color.white) ; 
+g.drawString("生命:" , 10 , 430 ) ; 
+g.drawRect(50 , 420 , 300 , 10) ; 
+g.drawString("得分: "+ score , 10 , 450) ; 
+g.setColor(Color.gray); 
+//画网格线，调试用 
+// for ( int i = 0; i <= 405 ; i = i+50) { 
+// g.drawLine(0, i , 425, i); 
+// g.drawLine(i, 0, i, 450); 
+// } 
+
+//绘制本方坦克 
+drawTank( g , op , x , y , 1 ); 
+
+//绘制本方炮弹 
+if ( bullet.flying ){ 
+g.fillOval(bullet.bx, bullet.by, 10, 10); 
+} 
+
+//绘制敌方坦克与炮弹 
+for (int i = 0; i < enemyNum ; i++) 
+if (enemy[i]!=null) 
+if (enemy[i].alive){ 
+drawTank ( g , enemy[i].op , enemy[i].x , enemy[i].y , i+2); 
+if (enemyBullet[i].flying) g.fillOval(enemyBullet[i].bx, enemyBullet[i].by, 10, 10); 
+} 
+
+} 
+
+//坦克前行 
+public void stepForward(MyTank3 ref){ 
+if (tankStep > 0){//为对齐格子，每次必须行进25像素 
+switch (op) { 
+case 0 : { 
+ref.y = ref.y - perStep ; 
+ref.tankStep --; 
+} 
+break; 
+case 1 : { 
+ref.x = ref.x + perStep; 
+ref.tankStep --; 
+} 
+break; 
+case 2 : { 
+ref.y = ref.y + perStep; 
+ref.tankStep --; 
+} 
+break; 
+case 3 : { 
+ref.x = ref.x - perStep; 
+ref.tankStep --; 
+} 
+break; 
+} 
+} 
+} 
+
+//主线程 
+public void run() { 
+int j = 0 , i = 0; 
+//将地图 
+四周设置成最高的阻塞等级 
+for ( i=0; i<18 ;i++ ){ 
+o.ground[0][i] = 255; 
+o.ground[17][i] = 255; 
+o.ground[i][0] = 255; 
+o.ground[i][17] = 255; 
+} 
+
+//我方坦克出生点，坦克的阻塞等级为坦克标号，即1 
+o.ground[(int)(( 
+
+x+20)/25)][(int)((y+20)/25)]=1; 
+o.ground[(int)((x+45)/25)][(int)((y+20)/25)]=1; 
+o.ground[(int)((x+20)/25)][(int)((y+45)/25)]=1; 
+o.ground[(int)((x+45)/25)][(int)((y+45)/25)]=1;//由像素坐标转到游戏坐标 
+
+//大循环 
+for (int a = 0; a<60000; a++){ 
+
+stepForward(this);//行进 
+
+if (tankStep==13){//行进一半时移动格子的阻塞属性以配合坦克移动 
+switch (op) { 
+case 0 : { 
+i=(int)((x+20)/25); 
+j=(int)((y+32)/25); 
+o.ground[i][j-1] = 1; 
+o.ground[i+1][j-1] = 1; 
+o.ground[i][j+1] = 0; 
+o.ground[i+1][j+1] = 0; 
+} 
+break; 
+case 1 : { 
+i=(int)((x+8)/25); 
+j=(int)((y+20)/25); 
+o.ground[i+2][j] = 1; 
+o.ground[i+2][j+1] = 1; 
+o.ground[i][j] = 0; 
+o.ground[i][j+1] = 0; 
+} 
+break; 
+case 2 : { 
+i=(int)((x+20)/25); 
+j=(int)((y+8)/25); 
+o.ground[i][j+2] = 1; 
+o.ground[i+1][j+2] = 1; 
+o.ground[i][j] = 0; 
+o.ground[i+1][j] = 0; 
+} 
+break; 
+case 3 : { 
+i=(int)((x+32)/25); 
+j=(int)((y+20)/25); 
+o.ground[i-1][j] = 1; 
+o.ground[i-1][j+1] = 1; 
+o.ground[i+1][j] = 0; 
+o.ground[i+1][j+1] = 0; 
+} 
+break; 
+} 
+}// if step == 13 
+
+try{ //sleep，否则游戏太快 
+Thread.sleep(sleepTime) ; 
+}catch(Exception e) { 
+e.printStackTrace() ; 
+} 
+
+//以下是敌军回合 
+if (enemyNum < enemyMax) {//若场上坦克数未达到最大 
+i = 5+175*(int)(3*Math.random());//三个随即出生点 
+j = 5 ; 
+// if (enemy[k] != null) 
+//若该出生点未被堵塞 
+if( o.ground[(int)((i+20)/25)][1]+o.ground[(int)((i+45)/25)][1]+o.ground[(int)((i+20)/25)][2]+o.ground[(int)((i+45)/25)][2] < 1 ){ 
+for ( int k = 0 ; k < enemyMax ; k++) 
+//坦克少或坦克死了，则出生 
+if ((k>=enemyNum)||(enemy[k].alive==false)) 
+{ 
+groundData a1 = new groundData(); 
+enemy[k] = new EnemyTank( 2 , i , j , a1 , k );//k是坦克数组的标号，k+2即为坦克及其地面标号 
+this.o.ground[(int)((i+20)/25)][(int)((j+20)/25)]=k+2; 
+this.o.ground[(int)((i+45)/25)][(int)((j+20)/25)]=k+2; 
+this.o.ground[(int)((i+20)/25)][(int)((j+45)/25)]=k+2; 
+this.o.ground[(int)((i+45)/25)][(int)((j+45)/25)]=k+2; //出生点阻塞 
+
+new Thread( enemy[k] ).start();//开始活动 
+
+enemy[k].getGroundData(this);//敌军载入全局地图 
+enemyNum++;//敌军数加1 
+break;//跳出循环，一次只出生一辆坦克 
+} 
+} 
+} 
+
+
+for ( int k = 0 ; k < enemyNum ; k++) 
+if (enemy[k].alive)//如果活动 
+{ 
+enemy[k].getGroundData(this);// 
+刷新全局地图 
+//将自己的位置写入全局地图 
+if (( enemy[k].tankStep == 13 )&&(enemy[k].stepping)&&(!enemy[k].stuck)) regGround( enemy[k].op , enemy[k].x , enemy[k].y , this , k ); 
+//判断自己的子弹是否击中阻塞 
+if ((enemyBullet[k].flying)&&((enemyBullet[k].bx+5)%<=4)&&((enemyBullet[k].by+5)%<=4)) bulletHit( enemyBullet[k] , o , enemyBullet[k].bk ); 
+} 
+//己方坦克是否击中阻塞 
+if ((bullet.flying)&&((bullet.bx+5)%<=4)&&((bullet.by+5)%<=4)) bulletHit( bullet , o , bullet.bk ); 
+// 
+
+重画 
+this.repaint(); 
+
+} 
+} 
+
+//敌军坦克对地图的刷新(注册) 
+public void regGround(int op , int x , int y , MyTank3 ref , int k ) { 
+
+int i , j ; 
+
+
+ref.enemy[k].stepping = false ; //stepping为真时，进行地面阻塞移动，移动后将stepping置为false，即一次移动只注册一次 
+switch (op) { 
+case 0 : { 
+i=(int)((x+20)/25); 
+j=(int)((y+32)/25); 
+ref.o.ground[i][j-1] = 2+k; 
+ref.o.ground[i+1][j-1] = 2+k; 
+ref.o.ground[i][j+1] = 0; 
+ref.o.ground[i+1][j+1] = 0; 
+} 
+break; 
+case 1 : { 
+i=(int)((x+8)/25); 
+j=(int)((y+20)/25); 
+ref.o.ground[i+2][j] = 2+k; 
+ref.o.ground[i+2][j+1] = 2+k; 
+ref.o.ground[i][j] = 0; 
+ref.o.ground[i][j+1] = 0; 
+} 
+break; 
+case 2 : { 
+i=(int)((x+20)/25); 
+j=(int)((y+8)/25); 
+ref.o.ground[i][j+2] = 2+k; 
+ref.o.ground[i+1][j+2] = 2+k; 
+ref.o.ground[i][j] = 0; 
+ref.o.ground[i+1][j] = 0; 
+} 
+break; 
+case 3 : { 
+i=(int)((x+32)/25); 
+j=(int)((y+20)/25); 
+ref.o.ground[i-1][j] = 2+k; 
+ref.o.ground[i-1][j+1] = 2+k; 
+ref.o.ground[i+1][j] = 0; 
+ref.o.ground[i+1][j+1] = 0; 
+} 
+break; 
+} 
+} 
+
+//按键功能 
+public void keyPressed(KeyEvent e) { 
+int i,j; 
+
+i = (int)((x+20))/25; 
+j = (int)((y+20))/25; 
+if(e.getKeyCode() == KeyEvent.VK_UP) { 
+if (tankStep <= 0) { 
+stuck = false; 
+op = 0 ; 
+tankStep = 25 ; 
+if((o.ground[i][j-1]>0)||(o.ground[i+1][j-1]>0)) { //转弯后判断是否阻塞 
+stuck = true ; 
+tankStep = 0 ;//如果阻塞则不移动 
+} 
+} 
+} 
+
+if(e.getKeyCode() == KeyEvent.VK_RIGHT) { 
+if (tankStep <= 0) { 
+stuck = false; 
+op = 1 ; 
+tankStep = 25 ; 
+if((o.ground[i+2][j]>0)||(o.ground[i+2][j+1]>0)) { 
+stuck = true ; 
+tankStep = 0 ; 
+} 
+} 
+} 
+
+if(e.getKeyCode() == KeyEvent.VK_DOWN) { 
+if (tankStep <= 0) { 
+stuck = false; 
+op = 2 ; 
+tankStep = 25 ; 
+if((o.ground[i][j+2]>0)||(o.ground[i+1][j+2]>0)) { 
+stuck = true ; 
+tankStep = 0 ; 
+} 
+} 
+} 
+
+if(e.getKeyCode() == KeyEvent.VK_LEFT) { 
+if (tankStep <= 0) { 
+stuck = false; 
+op = 3 ; 
+tankStep = 25 ; 
+if((o.ground[i-1][j]>0)||(o.ground[i-1][j+1]>0)) { 
+stuck = true ; 
+tankStep = 0 ; 
+} 
+} 
+} 
+
+if(e.getKeyCode() == KeyEvent.VK_SPACE){ 
+if (bullet.flying == false ){//若炮弹在飞则发不出第二发 
+ne 
+w Thread(bullet).start(); 
+bullet.bx = x + 15; 
+bullet.by = y + 15; 
+bullet.bop = op; 
+bullet.flying = true; 
+} 
+} 
+
+//esc直接退出 
+if(e.getKeyCode() == KeyEvent.VK_ESCAPE){ 
+System.exit(0); 
+} 
+
+this.repaint(); 
+
+
+} 
+
+//重写 
+public void keyReleased(KeyEvent arg0) { 
+
+} 
+
+public void keyTyped(KeyEvent arg0) { 
+
+} 
+
+//判断子弹是否击中 
+public void bulletHit( MyBullet3 ref , groundData o , int k ){ 
+int i , j ; 
+i = (int)((ref.bx+5)/25); 
+j = (int)((ref.by+5)/25); 
+// System.out.print("hit: i "+i+" , j "+j+" \n"); 
+if (k == 1) {//我方 
+
+击中 
+if (o.ground[i][j]>1){ 
+ref.flying = false; 
+if (o.ground[i][j]<100) killTank( o.ground[i][j]-2 , this ); 
+} 
+if (o.ground[i+1][j]>1){ 
+ref.flying = false; 
+if (o.ground[i+1][j]<100) killTank( o.ground[i+1][j]-2 , this ); 
+} 
+if (o.ground[i][j+1]>1){ 
+ref.flying = false; 
+if (o.ground[i][j+1]<100) killTank( o.ground[i][j+1]-2 , this ); 
+} 
+if (o.ground[i+1][j+1]>1){ 
+ref.flying = false; 
+if (o.ground[i+1][j+1]<100) killTank( o.ground[i+1][j+1]-2 ,this ); 
+} 
+} 
+if (k > 1){//敌方击中 
+if ((o.ground[i][j]>0)&&(o.ground[i][j]!=k)){ 
+ref.flying = false; 
+if ( o.ground[i][j] == 1 ) life = life - difficulty; 
+} 
+if ((o.ground[i+1][j]>0)&&(o.ground[i+1][j]!=k)){ 
+ref.flying = false; 
+if (o.ground[i+1][j] == 1 ) life = life - difficulty; 
+} 
+if ((o.ground[i][j+1]>0)&&(o.ground[i][j+1]!=k)){ 
+ref.flying = false; 
+if (o.ground[i][j+1] == 1 ) life = life - difficulty; 
+} 
+if ((o.ground[i+1][j+1]>0)&&(o.ground[i+1][j+1]!=k)){ 
+ref.flying = false; 
+if (o.ground[i+1][j+1] == 1 ) life = life - difficulty; 
+if ( life <= 0 ){ 
+// 弹出对话框 
+JOptionPane.showMessageDialog(null, 
+"你的得分 : " + score, 
+"游戏结束!", 
+JOptionPane.ERROR_MESSAGE); 
+// 结束游戏 
+System.exit(0) ; 
+} 
+} 
+} 
+
+
+} 
+
+//击毁敌方坦克 
+public void killTank( int k , MyTank3 ref ){ 
+
+int i , j , m , n; 
+
+if (ref.enemy[k].alive) { 
+ref.enemyNum--; 
+ref.enemy[k].alive = false ; 
+} 
+score = score + 100 ; 
+i = (int)((ref.enemy[k].x+20)/25); 
+j = (int)((ref.enemy[k].y+20)/25); 
+// System.out.print("explose: i "+i+" , j "+j+" , k"+k +" \n"); 
+for ( n = i-1 ; n < i+3 ; n++ ) 
+for ( m = j-1 ; m < j+3 ; m++ ) 
+if ((m>0)&&(m<18)&&(n>0)&&(n<18)) 
+if ( ref.o.ground[n][m] == k+2 ) 
+{ ref.o.ground[n][m] = 0 ; //消除地面阻塞 
+// System.out.print("m "+m+", n "+n+" \n") ; 
+} 
+} 
+
+//炮弹类 
+class MyBullet3 extends Thread { 
+
+int bx = 0 , by = 0 , bop = 0 , speed = 8, bk = 1;//bk为射出当前炮弹的坦克标号 
+boolean flying = false; 
+
+public void r 
+un() { 
+
+flying = true; 
+if (bk > 1) speed = 6; 
+for (int a = 0; a<60000; a++){ 
+if (flying) { 
+switch (bop) { 
+case 0 : { 
+by = by - speed ; 
+} 
+break; 
+case 1 : { 
+bx = bx + speed; 
+} 
+break; 
+case 2 : { 
+by = by + speed; 
+} 
+break; 
+case 3 : { 
+bx = bx - speed; 
+} 
+break; 
+} 
+} 
+
+if ((bx<0)||(bx>400)||(by<0)||(by>400)) 
+{ 
+// System.out.print(" Bullet out of Frame!"); 
+flying = false; 
+} 
+
+if (flying==false) return; 
+
+try{ 
+Thread.sleep(25) ; 
+}catch(Exception e) { 
+e.printStackTrace() ; 
+} 
+
+}// end of for 
+}// end of run 
+}// end of class 
+
+//敌方坦克类 
+class EnemyTank extends Thread { 
+
+groundData o; 
+int x = 0, y = 0 , op = 0 ,tk = 0; 
+boolean alive = false , stuck = false ,stepping = false ; 
+int 
+
+tankStep = 0 , perStep = 1; 
+
+
+//重构方法 
+EnemyTank(int top,int tx, int ty, groundData to , int k ){ 
+this.x = tx ; 
+this.y = ty ; 
+this.o = to ; 
+this.op = top ; 
+this.alive = true; 
+this.tk = k; 
+this.o.ground[(int)((x+20)/25)][(int)((y+20)/25)]=k+2; 
+this.o.ground[(int)((x+45)/25)][(int)((y+20)/25)]=k+2; 
+this.o.ground[(int)((x+20)/25)][(int)((y+45)/25)]=k+2; 
+this.o.ground[(int)((x+45)/25)][(int)((y+45)/25)]=k+2; 
+} 
+
+public void run(){ 
+
+for (int a = 0; a<60000; a++){ 
+if (alive) { 
+if ( tankStep == 0 ){ 
+if ((stuck)||(Math.random()<0.1)) turnAround(this); //遇到阻塞或者随机 转弯 
+tankStep = 25; 
+stepping = true; 
+judgeStuck(this); //判断是否被堵塞 
+} 
+proceed (this); 
+if ((Math.random()<0.3)&&(enemyBullet[tk].flying == false )) shootBullet();//未发射炮弹情况下随即发射 
+} else return ; 
+
+
+try{ 
+Thread.sleep(20) ; 
+}catch(Exception e) { 
+e.printStackTrace() ; 
+} 
+
+}//end of for 
+}//end of run 
+
+void shootBullet( ){ 
+
+//申请新的炮弹 
+new Thread(enemyBullet[tk]).start(); 
+enemyBullet[tk].speed = 6; 
+enemyBullet[tk].bx = x + 15; 
+enemyBullet[tk].by = y + 15; 
+enemyBullet[tk].bop = op; 
+enemyBullet[tk].bk = tk+2; 
+enemyBullet[tk].flying = true; 
+} 
+
+void judgeStuck( EnemyTank ref ){ 
+
+int i,j; 
+i = (int)((x+20))/25; 
+j = (int)((y+20))/25; 
+
+stuck = false ; 
+switch (op){ 
+case 0 : if((o.ground[i][j-1]>0)||(o.ground[i+1][j-1]>0)) { 
+ref.stuck = true ; 
+} break; 
+case 1 : if((o.ground[i+2][j]>0)||(o.ground[i+2][j+1]>0)) { 
+ref.stuck = true ; 
+} break; 
+case 2 : if((o.ground[i][j+2]>0)||(o.ground[i+1][j+2]>0)) { 
+ref.stuck = true ; 
+} break; 
+case 3 : if((o.ground[i-1][j]>0)||(o.ground[i-1][j+1]>0)) { 
+ref.stuck = true ; 
+} break; 
+} 
+
+
+} 
+
+void turnAround( EnemyTank ref){ 
+int i = (int)(Math.random()*2)+1;//i= 1 2 3 中的随机数 
+ref.op = ( op + i ) % 4 ;//随机转弯 
+} 
+
+void getGroundData ( MyTank3 d ){ 
+
+this.o = d.o; //载入地图 
+} 
+
+
+void proceed( EnemyTank ref ) { 
+
+if (tankStep > 0){ 
+if( stuck == false) 
+switch (op) { 
+case 0 : { 
+ref.y = ref.y - perStep ; 
+ref.tankStep --; 
+} 
+break; 
+case 1 : { 
+ref.x = ref.x + perStep; 
+ref.tankStep --; 
+} 
+break; 
+case 2 : { 
+ref.y = ref.y + perStep; 
+ref.tankStep --; 
+} 
+break; 
+case 3 : { 
+ref.x = ref.x - perStep; 
+ref.tankStep --; 
+} 
+break; 
+} 
+else tankStep --;//遇到堵塞后停止一会再转弯 
+} 
+
+} 
+}//end of class 
+} 
